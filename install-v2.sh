@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 
-# Упрощенный установщик XNM1 Hyprland для NixOS
-# Версия 2.0 - исправлены проблемы совместимости
+# XNM1 Hyprland installer for NixOS (ASCII only version)
+# Version 3.0 - no cyrillic characters
 
-set -e  # Остановка при ошибке
+set -e
 
-# Цвета
+# Colors
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -14,91 +14,143 @@ NC='\033[0m'
 
 print_header() {
     echo -e "${BLUE}"
-    echo "╔══════════════════════════════════════════════════════════════╗"
-    echo "║              XNM1 Hyprland Auto Installer v2.0              ║"
-    echo "║                    для NixOS системы                        ║"
-    echo "╚══════════════════════════════════════════════════════════════╝"
+    echo "=============================================="
+    echo "     XNM1 Hyprland Auto Installer v3.0"
+    echo "           for NixOS system"
+    echo "=============================================="
     echo -e "${NC}"
 }
 
 print_step() {
-    echo -e "${GREEN}[ШАГ] $1${NC}"
+    echo -e "${GREEN}[STEP] $1${NC}"
 }
 
 print_warning() {
-    echo -e "${YELLOW}[ВНИМАНИЕ] $1${NC}"
+    echo -e "${YELLOW}[WARNING] $1${NC}"
 }
 
 print_error() {
-    echo -e "${RED}[ОШИБКА] $1${NC}"
+    echo -e "${RED}[ERROR] $1${NC}"
 }
 
 check_nixos() {
     if [[ ! -f /etc/nixos/configuration.nix ]]; then
-        print_error "Этот скрипт работает только на NixOS!"
+        print_error "This script works only on NixOS!"
         exit 1
     fi
-    print_step "Проверка NixOS - ОК"
+    print_step "NixOS check - OK"
 }
 
 get_user_input() {
     echo
-    echo -e "${YELLOW}Необходимо ввести данные для настройки системы:${NC}"
+    echo -e "${YELLOW}Please enter system configuration data:${NC}"
     echo
     
-    # Имя пользователя
+    # Username
     while true; do
-        read -p "Введите ваше имя пользователя (текущий: $USER): " USERNAME
+        read -p "Enter your username (current: $USER): " USERNAME
         USERNAME=${USERNAME:-$USER}
         if [[ "$USERNAME" =~ ^[a-z][a-z0-9_-]*$ ]]; then
             break
         else
-            print_error "Неверное имя пользователя. Используйте только буквы, цифры, _ и -"
+            print_error "Invalid username. Use only letters, numbers, _ and -"
         fi
     done
     
     # Hostname
     while true; do
-        read -p "Введите имя компьютера (hostname): " HOSTNAME
+        read -p "Enter computer hostname: " HOSTNAME
         if [[ -n "$HOSTNAME" && "$HOSTNAME" =~ ^[a-z][a-z0-9-]*$ ]]; then
             break
         else
-            print_error "Неверное имя хоста. Используйте только буквы, цифры и -"
+            print_error "Invalid hostname. Use only letters, numbers and -"
         fi
     done
     
     echo
-    echo -e "${BLUE}Выбранные настройки:${NC}"
-    echo "  Пользователь: $USERNAME"
-    echo "  Хост: $HOSTNAME"
+    echo -e "${BLUE}Selected settings:${NC}"
+    echo "  User: $USERNAME"
+    echo "  Host: $HOSTNAME"
     echo
 }
 
 confirm_installation() {
-    print_warning "Этот скрипт внесет изменения в вашу систему!"
-    print_warning "USBGuard будет отключен для избежания проблем"
-    print_warning "Текущие конфигурации будут сохранены как backup"
+    print_warning "This script will make changes to your system!"
+    print_warning "USBGuard will be disabled to avoid problems"
+    print_warning "Current configs will be backed up"
     
     echo
-    read -p "Продолжить установку? (введите 'yes' для продолжения): " CONFIRM
+    read -p "Continue installation? (type 'yes' to continue): " CONFIRM
     if [[ "$CONFIRM" != "yes" ]]; then
-        echo "Установка отменена пользователем."
+        echo "Installation cancelled by user."
         exit 0
+    fi
+}
+
+install_fonts_first() {
+    print_step "Installing fonts for proper display..."
+    
+    # Add fonts to current configuration
+    if ! grep -q "dejavu_fonts" /etc/nixos/configuration.nix 2>/dev/null; then
+        print_step "Adding fonts support to system..."
+        
+        sudo cp /etc/nixos/configuration.nix /etc/nixos/configuration.nix.backup.fonts.$(date +%Y%m%d_%H%M%S)
+        
+        sudo tee -a /etc/nixos/configuration.nix > /dev/null << 'FONTSEOF'
+
+# Font support
+fonts.packages = with pkgs; [
+  dejavu_fonts
+  liberation_ttf
+  noto-fonts
+  noto-fonts-cjk
+  noto-fonts-emoji
+  font-awesome
+];
+
+# Russian language support
+i18n.defaultLocale = "en_US.UTF-8";
+i18n.extraLocaleSettings = {
+  LC_ADDRESS = "ru_RU.UTF-8";
+  LC_IDENTIFICATION = "ru_RU.UTF-8";
+  LC_MEASUREMENT = "ru_RU.UTF-8";
+  LC_MONETARY = "ru_RU.UTF-8";
+  LC_NAME = "ru_RU.UTF-8";
+  LC_NUMERIC = "ru_RU.UTF-8";
+  LC_PAPER = "ru_RU.UTF-8";
+  LC_TELEPHONE = "ru_RU.UTF-8";
+  LC_TIME = "ru_RU.UTF-8";
+};
+
+# Console font
+console = {
+  font = "Lat2-Terminus16";
+  keyMap = "us";
+  useXkbConfig = true;
+};
+FONTSEOF
+        
+        print_step "Applying font changes..."
+        sudo nixos-rebuild switch
+        
+        print_step "Fonts installed. Russian text should now display correctly."
+    else
+        echo "  Fonts already configured"
     fi
 }
 
 install_git() {
     if ! command -v git &> /dev/null; then
-        print_step "Установка git..."
-        nix-shell -p git --run "echo Git доступен"
+        print_step "Installing git..."
+        nix-shell -p git --run "echo Git available"
     fi
 }
 
 clone_repo() {
-    print_step "Клонирование репозитория XNM1..."
+    print_step "Cloning XNM1 repository..."
     
     if [[ -d "linux-nixos-hyprland-config-dotfiles" ]]; then
-        print_warning "Папка уже существует, удаляем..."
+        print_warning "Directory already exists, removing..."
         rm -rf linux-nixos-hyprland-config-dotfiles
     fi
     
@@ -107,39 +159,39 @@ clone_repo() {
 }
 
 configure_system() {
-    print_step "Настройка конфигурации под вашу систему..."
+    print_step "Configuring system for your setup..."
     
-    # Замена имени пользователя
-    echo "  - Замена пользователя 'xnm' на '$USERNAME'"
+    # Replace username
+    echo "  - Replacing user 'xnm' with '$USERNAME'"
     find . -type f -name "*.nix" -exec sed -i "s/xnm/$USERNAME/g" {} + 2>/dev/null || true
     find . -type f -name "*.conf" -exec sed -i "s/xnm/$USERNAME/g" {} + 2>/dev/null || true
     find . -type f -name "*.toml" -exec sed -i "s/xnm/$USERNAME/g" {} + 2>/dev/null || true
     
-    # Замена hostname
-    echo "  - Замена хоста 'isitreal-laptop' на '$HOSTNAME'"
+    # Replace hostname
+    echo "  - Replacing host 'isitreal-laptop' with '$HOSTNAME'"
     find . -type f -name "*.nix" -exec sed -i "s/isitreal-laptop/$HOSTNAME/g" {} + 2>/dev/null || true
     find . -type f -name "*.conf" -exec sed -i "s/isitreal-laptop/$HOSTNAME/g" {} + 2>/dev/null || true
     
-    # Отключение USBGuard
-    echo "  - Отключение USBGuard для безопасности"
+    # Disable USBGuard
+    echo "  - Disabling USBGuard for safety"
     cat > nixos/usb.nix << 'USBEOF'
 { config, pkgs, ... }:
 
 {
-  # USBGuard отключен для упрощения установки
-  # При необходимости можете настроить позже
+  # USBGuard disabled for easier installation
+  # You can configure it later if needed
   services.usbguard.enable = false;
   
-  # Базовая поддержка USB устройств
+  # Basic USB device support
   hardware.enableRedistributableFirmware = true;
   
-  # Поддержка большинства USB устройств
+  # Support for most USB devices
   services.udisks2.enable = true;
 }
 USBEOF
 
-    # Очистка персональных настроек git
-    echo "  - Очистка персональных настроек"
+    # Clean personal git settings
+    echo "  - Cleaning personal settings"
     if [[ -f "home/.gitconfig" ]]; then
         cat > home/.gitconfig << GITEOF
 [user]
@@ -154,45 +206,45 @@ USBEOF
 GITEOF
     fi
     
-    # Очистка SSH конфига
+    # Clean SSH config
     if [[ -f "home/.ssh/config" ]]; then
-        echo "# SSH конфигурация" > home/.ssh/config
-        echo "# Добавьте ваши настройки здесь" >> home/.ssh/config
+        echo "# SSH configuration" > home/.ssh/config
+        echo "# Add your settings here" >> home/.ssh/config
     fi
 }
 
 enable_flakes() {
-    print_step "Проверка поддержки Flakes..."
+    print_step "Checking Flakes support..."
     
     if ! grep -q "experimental-features.*flakes" /etc/nixos/configuration.nix 2>/dev/null; then
-        print_step "Включение поддержки Flakes в системе..."
+        print_step "Enabling Flakes support in system..."
         
-        # Создаем backup
+        # Create backup
         sudo cp /etc/nixos/configuration.nix /etc/nixos/configuration.nix.backup.$(date +%Y%m%d_%H%M%S)
         
-        # Добавляем поддержку flakes
+        # Add flakes support
         sudo tee -a /etc/nixos/configuration.nix > /dev/null << 'FLAKESEOF'
 
-# Поддержка экспериментальных возможностей Nix
+# Experimental Nix features support
 nix.settings.experimental-features = [ "nix-command" "flakes" ];
 FLAKESEOF
         
-        print_step "Применение изменений для Flakes..."
+        print_step "Applying Flakes changes..."
         sudo nixos-rebuild switch
     else
-        echo "  Flakes уже включены"
+        echo "  Flakes already enabled"
     fi
 }
 
 backup_configs() {
-    print_step "Создание резервных копий..."
+    print_step "Creating backups..."
     
-    # Backup системных файлов
+    # Backup system files
     if [[ -f /etc/nixos/configuration.nix ]]; then
         sudo cp /etc/nixos/configuration.nix /etc/nixos/configuration.nix.backup.xnm1.$(date +%Y%m%d_%H%M%S)
     fi
     
-    # Backup пользовательских файлов (если есть)
+    # Backup user files (if exist)
     if [[ -f ~/.config/hypr/hyprland.conf ]]; then
         mkdir -p ~/.config.backup.xnm1
         cp -r ~/.config ~/.config.backup.xnm1/ 2>/dev/null || true
@@ -200,41 +252,41 @@ backup_configs() {
 }
 
 copy_files() {
-    print_step "Копирование конфигурационных файлов..."
+    print_step "Copying configuration files..."
     
-    # Копирование пользовательских файлов
-    echo "  - Копирование пользовательских настроек в $HOME"
+    # Copy user files
+    echo "  - Copying user settings to $HOME"
     cp -r home/* ~/
     
-    # Создание необходимых директорий
+    # Create necessary directories
     mkdir -p ~/.config ~/.local/share
     
-    # Копирование системных файлов
-    echo "  - Копирование системных файлов в /etc/nixos"
+    # Copy system files
+    echo "  - Copying system files to /etc/nixos"
     sudo cp -r nixos/* /etc/nixos/
     
-    # Установка правильных прав доступа
-    echo "  - Установка прав доступа"
+    # Set proper permissions
+    echo "  - Setting permissions"
     sudo chown -R root:root /etc/nixos
     sudo chmod -R 644 /etc/nixos/*.nix
     sudo chmod 755 /etc/nixos
 }
 
 install_system() {
-    print_step "Установка системы... (это может занять 10-30 минут)"
-    print_warning "Не прерывайте процесс установки!"
+    print_step "Installing system... (this may take 10-30 minutes)"
+    print_warning "Do not interrupt the installation process!"
     
-    echo "  - Обновление flake..."
+    echo "  - Updating flake..."
     sudo nix flake update --flake /etc/nixos
     
-    echo "  - Пересборка системы с новой конфигурацией..."
+    echo "  - Rebuilding system with new configuration..."
     if sudo nixos-rebuild switch --flake /etc/nixos#$HOSTNAME --upgrade; then
-        print_step "✅ Система успешно установлена!"
+        print_step "System successfully installed!"
         return 0
     else
-        print_error "Ошибка при пересборке системы"
+        print_error "Error during system rebuild"
         echo
-        echo "Попробуйте запустить вручную с подробным выводом:"
+        echo "Try running manually with detailed output:"
         echo "sudo nixos-rebuild switch --flake /etc/nixos#$HOSTNAME --show-trace"
         return 1
     fi
@@ -242,40 +294,41 @@ install_system() {
 
 show_completion_info() {
     echo
-    echo -e "${GREEN}╔══════════════════════════════════════════════════════════════╗${NC}"
-    echo -e "${GREEN}║                    УСТАНОВКА ЗАВЕРШЕНА!                     ║${NC}"
-    echo -e "${GREEN}╚══════════════════════════════════════════════════════════════╝${NC}"
+    echo -e "${GREEN}=============================================${NC}"
+    echo -e "${GREEN}           INSTALLATION COMPLETED!${NC}"
+    echo -e "${GREEN}=============================================${NC}"
     echo
-    echo -e "${BLUE}🎉 Что делать дальше:${NC}"
-    echo "   1. Перезагрузите систему: sudo reboot"
-    echo "   2. После загрузки войдите под своим пользователем"
-    echo "   3. Hyprland запустится автоматически"
+    echo -e "${BLUE}What to do next:${NC}"
+    echo "   1. Reboot system: sudo reboot"
+    echo "   2. After boot login with your user"
+    echo "   3. Hyprland will start automatically"
     echo
-    echo -e "${BLUE}📋 Основные горячие клавиши:${NC}"
-    echo "   SUPER + D           - Запуск приложений (rofi)"
-    echo "   SUPER + T           - Терминал"
-    echo "   SUPER + B           - Браузер"
-    echo "   SUPER + F           - Файловый менеджер"
-    echo "   SUPER + SHIFT + Q   - Закрыть окно"
-    echo "   SUPER + SHIFT + K   - Показать все клавиши"
+    echo -e "${BLUE}Main hotkeys:${NC}"
+    echo "   SUPER + D           - Launch apps (rofi)"
+    echo "   SUPER + T           - Terminal"
+    echo "   SUPER + B           - Browser"
+    echo "   SUPER + F           - File manager"
+    echo "   SUPER + SHIFT + Q   - Close window"
+    echo "   SUPER + SHIFT + K   - Show all keys"
     echo
-    echo -e "${BLUE}🔧 Полезные команды в терминале:${NC}"
-    echo "   nswitch   - Пересобрать систему"
-    echo "   nswitchu  - Обновить и пересобрать"
-    echo "   ngc       - Очистить старые версии"
+    echo -e "${BLUE}Useful terminal commands:${NC}"
+    echo "   nswitch   - Rebuild system"
+    echo "   nswitchu  - Update and rebuild"
+    echo "   ngc       - Clean old versions"
     echo
-    echo -e "${YELLOW}📚 Больше информации:${NC}"
-    echo "   - Конфигурация: ~/.config/hypr/hyprland.conf"
-    echo "   - Системные настройки: /etc/nixos/"
+    echo -e "${YELLOW}More information:${NC}"
+    echo "   - Configuration: ~/.config/hypr/hyprland.conf"
+    echo "   - System settings: /etc/nixos/"
     echo "   - GitHub: https://github.com/XNM1/linux-nixos-hyprland-config-dotfiles"
     echo
 }
 
-# Основная функция
+# Main function
 main() {
     print_header
     
     check_nixos
+    install_fonts_first  # Install fonts FIRST
     get_user_input  
     confirm_installation
     
@@ -288,15 +341,15 @@ main() {
     
     if install_system; then
         show_completion_info
-        echo -e "${GREEN}Перезагрузите систему для завершения установки!${NC}"
+        echo -e "${GREEN}Reboot system to complete installation!${NC}"
     else
-        print_error "Установка не удалась. Проверьте логи выше."
+        print_error "Installation failed. Check logs above."
         exit 1
     fi
 }
 
-# Обработка сигналов
-trap 'print_error "Установка прервана пользователем"; exit 1' INT TERM
+# Signal handling
+trap 'print_error "Installation interrupted by user"; exit 1' INT TERM
 
-# Запуск
+# Run
 main "$@"
