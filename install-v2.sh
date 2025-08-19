@@ -88,52 +88,103 @@ confirm_installation() {
 }
 
 install_fonts_first() {
-    print_step "Installing fonts for proper display..."
+    print_step "Installing FULL font support for proper display..."
     
-    # Add fonts to current configuration
+    # Add comprehensive fonts to current configuration
     if ! grep -q "dejavu_fonts" /etc/nixos/configuration.nix 2>/dev/null; then
-        print_step "Adding fonts support to system..."
+        print_step "Adding comprehensive fonts support to system..."
         
         sudo cp /etc/nixos/configuration.nix /etc/nixos/configuration.nix.backup.fonts.$(date +%Y%m%d_%H%M%S)
         
         sudo tee -a /etc/nixos/configuration.nix > /dev/null << 'FONTSEOF'
 
-# Font support
-fonts.packages = with pkgs; [
-  dejavu_fonts
-  liberation_ttf
-  noto-fonts
-  noto-fonts-cjk
-  noto-fonts-emoji
-  font-awesome
-];
-
-# Russian language support
-i18n.defaultLocale = "en_US.UTF-8";
-i18n.extraLocaleSettings = {
-  LC_ADDRESS = "ru_RU.UTF-8";
-  LC_IDENTIFICATION = "ru_RU.UTF-8";
-  LC_MEASUREMENT = "ru_RU.UTF-8";
-  LC_MONETARY = "ru_RU.UTF-8";
-  LC_NAME = "ru_RU.UTF-8";
-  LC_NUMERIC = "ru_RU.UTF-8";
-  LC_PAPER = "ru_RU.UTF-8";
-  LC_TELEPHONE = "ru_RU.UTF-8";
-  LC_TIME = "ru_RU.UTF-8";
+# COMPREHENSIVE font support
+fonts = {
+  packages = with pkgs; [
+    # Core fonts
+    dejavu_fonts
+    liberation_ttf
+    noto-fonts
+    noto-fonts-cjk
+    noto-fonts-emoji
+    noto-fonts-extra
+    
+    # Google fonts
+    google-fonts
+    
+    # Monospace fonts
+    source-code-pro
+    fira-code
+    jetbrains-mono
+    
+    # Terminal fonts
+    terminus_font
+    inconsolata
+    
+    # System fonts
+    font-awesome
+    powerline-fonts
+    
+    # Unicode fonts
+    unifont
+    symbola
+    
+    # Microsoft fonts (optional)
+    corefonts
+    vistafonts
+  ];
+  
+  # Font rendering configuration
+  fontconfig = {
+    defaultFonts = {
+      serif = [ "DejaVu Serif" "Noto Serif" ];
+      sansSerif = [ "DejaVu Sans" "Noto Sans" ];
+      monospace = [ "DejaVu Sans Mono" "Noto Sans Mono" ];
+      emoji = [ "Noto Color Emoji" ];
+    };
+    
+    enable = true;
+    antialias = true;
+    hinting.enable = true;
+    hinting.style = "slight";
+    subpixel.rgba = "rgb";
+  };
 };
 
-# Console font
+# Full localization support
+i18n = {
+  defaultLocale = "en_US.UTF-8";
+  supportedLocales = [
+    "en_US.UTF-8/UTF-8"
+    "ru_RU.UTF-8/UTF-8"
+    "C.UTF-8/UTF-8"
+  ];
+  extraLocaleSettings = {
+    LC_ADDRESS = "ru_RU.UTF-8";
+    LC_IDENTIFICATION = "ru_RU.UTF-8";
+    LC_MEASUREMENT = "ru_RU.UTF-8";
+    LC_MONETARY = "ru_RU.UTF-8";
+    LC_NAME = "ru_RU.UTF-8";
+    LC_NUMERIC = "ru_RU.UTF-8";
+    LC_PAPER = "ru_RU.UTF-8";
+    LC_TELEPHONE = "ru_RU.UTF-8";
+    LC_TIME = "ru_RU.UTF-8";
+  };
+};
+
+# Console with Unicode support
 console = {
-  font = "Lat2-Terminus16";
+  font = "ter-u28n";
+  packages = [ pkgs.terminus_font ];
   keyMap = "us";
   useXkbConfig = true;
 };
 FONTSEOF
         
-        print_step "Applying font changes..."
+        print_step "Applying comprehensive font changes..."
         sudo nixos-rebuild switch
         
-        print_step "Fonts installed. Russian text should now display correctly."
+        print_step "Full font support installed. All text should display correctly now."
     else
         echo "  Fonts already configured"
     fi
